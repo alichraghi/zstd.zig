@@ -3,6 +3,8 @@ pub usingnamespace @import("error.zig");
 
 const std = @import("std");
 const c = @import("c.zig");
+const comp = @import("compress.zig");
+const decomp = @import("decompress.zig");
 const testing = std.testing;
 
 pub const frame_header_size_max = c.ZSTD_FRAMEHEADERSIZE_MAX;
@@ -17,7 +19,7 @@ pub fn version() std.SemanticVersion {
 }
 
 test "refernece decls" {
-    testing.refAllDeclsRecursive(@import("compress.zig"));
+    testing.refAllDeclsRecursive(comp);
 }
 
 test "version" {
@@ -28,12 +30,22 @@ test "version" {
     }, version());
 }
 
+const hello = "hello";
+
 test "compress/decompress" {
-    const hello = "hello";
     var comp_out: [20]u8 = undefined;
     var decomp_out: [20]u8 = undefined;
 
-    const compressed = try @import("compress.zig").compress(&comp_out, hello, minCompressionLevel());
-    const decompressed = try @import("decompress.zig").decompress(&decomp_out, compressed);
+    const compressed = try comp.compress(&comp_out, hello, comp.minCompressionLevel());
+    const decompressed = try decomp.decompress(&decomp_out, compressed);
     try testing.expectEqualStrings(hello, decompressed);
+}
+
+test "compress with context" {
+    var out: [20]u8 = undefined;
+
+    const compressor = try comp.Compressor.init(.{});
+    defer compressor.deinit();
+
+    _ = try compressor.compress(&out, hello, comp.minCompressionLevel());
 }
