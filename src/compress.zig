@@ -235,6 +235,18 @@ pub const Compressor = struct {
         _ = c.ZSTD_freeCCtx(self.handle);
     }
 
+    pub const ResetDirective = enum(u2) {
+        session = 1,
+        parameters = 2,
+        session_and_parameters = 3,
+    };
+
+    // no worries. `error.Generic` is unreachable
+    pub fn reset(self: Compressor, directive: ResetDirective) error{WrongStage}!void {
+        if (isError(c.ZSTD_CCtx_reset(self.handle, @enumToInt(directive))))
+            return error.WrongStage;
+    }
+
     /// Important: in order to behave similarly to `compress()`,
     /// this function compresses at requested compression level,
     /// __ignoring any other parameter__.
@@ -250,10 +262,32 @@ pub const Compressor = struct {
             @intCast(c_int, compression_level),
         ))];
     }
+
+    /// Behave the same as `Compressor.compress()`, but compression parameters are set using the advanced API.
+    /// `Compressor.compress2()` always starts a new frame.
+    /// Should `self` hold data from a previously unfinished frame, everything about it is forgotten.
+    /// - Compression parameters are pushed into `Compressor` before starting compression
+    /// - The function is always blocking, returns when compression is completed.
+    /// Hint: compression runs faster if `dest.len` >=  `compressBound(src_size)`.
+    /// Returns an slice of written data, which points to `dest`.
+    pub fn compress2(self: Compressor, dest: []u8, src: []const u8) Error![]const u8 {
+        return dest[0..try checkError(c.ZSTD_compress2(
+            self.handle,
+            @ptrCast(*anyopaque, dest),
+            dest.len,
+            @ptrCast(*const anyopaque, src),
+            src.len,
+        ))];
+    }
+
+    pub fn setPledgedSrcSize(self: Compressor, size: usize) error{WrongStage}!void {
+        if (isError(c.ZSTD_CCtx_setPledgedSrcSize(self.handle, size)))
+            return error.WrongStage;
+    }
 };
 
 /// Compresses `src` content as a single zstd compressed frame into already allocated `dest`.
-/// Returns an slice of written data, which points to `dest`
+/// Returns an slice of written data, which points to `dest`.
 pub fn compress(dest: []u8, src: []const u8, compression_level: i32) Error![]const u8 {
     return dest[0..try checkError(c.ZSTD_compress(
         @ptrCast(*anyopaque, dest),
