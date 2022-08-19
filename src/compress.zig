@@ -9,6 +9,18 @@ const testing = std.testing;
 pub const ZSTD_CONTENTSIZE_UNKNOWN = @as(c_ulonglong, 0) -% @as(c_int, 1);
 pub const ZSTD_CONTENTSIZE_ERROR = @as(c_ulonglong, 0) -% @as(c_int, 2);
 
+pub const InBuffer = extern struct {
+    src: [*]const u8,
+    size: usize,
+    pos: usize,
+};
+
+pub const OutBuffer = extern struct {
+    dst: [*]u8,
+    size: usize,
+    pos: usize,
+};
+
 pub const Strategy = enum(u4) {
     fast = 1,
     dfast = 2,
@@ -278,6 +290,50 @@ pub const Compressor = struct {
             @ptrCast(*const anyopaque, src),
             src.len,
         ))];
+    }
+
+    pub const EndDirective = enum(u2) {
+        continue_ = 0,
+        flush = 1,
+        end = 2,
+    };
+
+    /// - Compression parameters cannot be changed once compression is started (save a list of exceptions in multi-threading mode)
+    /// - `output.pos` must be <= dstCapacity, `input.pos` must be <= `src.len`
+    /// - `output.pos` and `input.pos` will be updated. They are guaranteed to remain below their respective limit.
+    /// - endOp must be a valid directive
+    /// - When `nb_workers` == 0 (default), function is blocking : it completes its job before returning to caller.
+    /// - When `nb_workers` >= 1, function is non-blocking: it copies a portion of input, distributes jobs to internal worker threads, flush to output whatever is available,
+    ///                                                 and then immediately returns, just indicating that there is some data remaining to be flushed.
+    ///                                                 The function nonetheless guarantees forward progress : it will return only after it reads or write at least 1+ byte.
+    /// - Exception : if the first call requests a `.end` directive and provides enough dstCapacity, the function delegates to `Compressor.compress2()` which is always blocking.
+    /// - Return provides a minimum amount of data remaining to be flushed from internal buffers
+    ///           or an error code, which can be tested using `isError()`.
+    ///           if _Return_ != 0, flush is not fully completed, there is still some data left within internal buffers.
+    ///           This is useful for `.flush`, since in this case more flushes are necessary to empty all buffers.
+    ///           For `.end`, _Return_ == 0 when internal buffers are fully flushed and frame is completed.
+    /// - after a `.end` directive, if internal buffer is not fully flushed (_Return_ != 0),
+    ///           only `.end` or `.flush` operations are allowed.
+    ///           Before starting a new compression job, or changing compression parameters,
+    ///           it is required to fully flush internal buffers.
+    pub fn compressStream(self: Compressor, in: *InBuffer, out: *OutBuffer, end_directive: EndDirective) Error!usize {
+        return checkError(c.ZSTD_compressStream2(
+            self.handle,
+            @ptrCast([*c]c.ZSTD_outBuffer, out),
+            @ptrCast([*c]c.ZSTD_inBuffer, in),
+            @enumToInt(end_directive),
+        ));
+    }
+
+    /// Recommended size for input buffer.
+    pub fn recommInSize() usize {
+        return c.ZSTD_CStreamInSize();
+    }
+
+    /// Recommended size for output buffer.
+    /// Guarantee to successfully flush at least one complete compressed block.
+    pub fn recommOutSize() usize {
+        return c.ZSTD_CStreamOutSize();
     }
 
     pub fn setPledgedSrcSize(self: Compressor, size: usize) error{WrongStage}!void {

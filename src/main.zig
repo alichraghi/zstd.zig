@@ -49,3 +49,52 @@ test "compress with context" {
 
     _ = try compressor.compress(&out, hello, comp.minCompressionLevel());
 }
+
+test "streaming compress" {
+    const in_data = [_]u8{ 'h', 'e', 'l', 'l', 'o' } ** 200_000;
+    var in_fbs = std.io.fixedBufferStream(&in_data);
+
+    var out_data: [in_data.len]u8 = undefined;
+    var out_fbs = std.io.fixedBufferStream(&out_data);
+
+    var in_buf = try testing.allocator.alloc(u8, comp.Compressor.recommInSize());
+    var out_buf = try testing.allocator.alloc(u8, comp.Compressor.recommOutSize());
+    defer testing.allocator.free(in_buf);
+    defer testing.allocator.free(out_buf);
+
+    const ctx = try comp.Compressor.init(.{
+        .compression_level = 1,
+        .checksum_flag = 1,
+    });
+
+    while (true) {
+        const read = try in_fbs.read(in_buf);
+        const is_last_chunk = (read < in_buf.len);
+
+        var input = comp.InBuffer{
+            .src = in_buf.ptr,
+            .size = read,
+            .pos = 0,
+        };
+
+        while (true) {
+            var output = comp.OutBuffer{
+                .dst = out_buf.ptr,
+                .size = out_buf.len,
+                .pos = 0,
+            };
+            const remaining = try ctx.compressStream(&input, &output, if (is_last_chunk) .end else .continue_);
+            _ = try out_fbs.write(out_buf[0..output.pos]);
+
+            if ((is_last_chunk and remaining == 0) or input.pos == read)
+                break;
+        }
+
+        if (is_last_chunk)
+            break;
+    }
+
+    var decomp_out: [in_data.len]u8 = undefined;
+    const decompressed = try decomp.decompress(&decomp_out, out_fbs.getWritten());
+    try std.testing.expectEqualStrings(&in_data, decompressed);
+}

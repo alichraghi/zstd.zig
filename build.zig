@@ -9,8 +9,16 @@ pub fn build(b: *std.build.Builder) void {
     main_tests.setBuildMode(mode);
     link(b, main_tests, .{});
 
+    const main_tests_exe = b.addTestExe("test-exe", "src/main.zig");
+    main_tests_exe.setBuildMode(mode);
+    link(b, main_tests_exe, .{});
+    main_tests_exe.install();
+
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&main_tests.step);
+
+    const test_exe_step = b.step("test-exe", "Run library tests");
+    test_exe_step.dependOn(b.getInstallStep());
 }
 
 pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep, options: Options) void {
@@ -22,6 +30,7 @@ pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep, options: Opti
 pub fn buildZSTD(b: *std.build.Builder) *std.build.LibExeObjStep {
     const zstd = b.addStaticLibrary("zstd", null);
     zstd.linkLibC();
+    zstd.defineCMacro("DEBUGLEVEL", "2");
     zstd.addCSourceFiles(&.{
         vendor_dir ++ "/lib/common/debug.c",
         vendor_dir ++ "/lib/common/entropy_common.c",

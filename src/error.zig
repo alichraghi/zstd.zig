@@ -37,7 +37,6 @@ pub fn isError(code: usize) bool {
 pub fn checkError(maybe_error: usize) Error!usize {
     return if (isError(maybe_error))
         switch (c.ZSTD_getErrorCode(maybe_error)) {
-            0 => unreachable,
             1 => error.Generic,
             10 => error.UnknownPrefix,
             12 => error.UnsupportedVersion,
