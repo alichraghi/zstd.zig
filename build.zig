@@ -23,14 +23,18 @@ pub fn build(b: *std.build.Builder) void {
 
 pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep, options: Options) void {
     _ = options;
-    step.linkLibrary(buildZSTD(b));
+    step.linkLibrary(buildZSTD(b, options));
     step.addIncludeDir(vendor_dir ++ "/lib");
 }
 
-pub fn buildZSTD(b: *std.build.Builder) *std.build.LibExeObjStep {
+pub fn buildZSTD(b: *std.build.Builder, options: Options) *std.build.LibExeObjStep {
     const zstd = b.addStaticLibrary("zstd", null);
     zstd.linkLibC();
-    zstd.defineCMacro("DEBUGLEVEL", "2");
+
+    if (options.multi_threading)
+        zstd.defineCMacro("ZSTD_MULTITHREAD_SUPPORT_DEFAULT", "1");
+    zstd.defineCMacro("ZSTD_LEGACY_SUPPORT", "0");
+
     zstd.addCSourceFiles(&.{
         vendor_dir ++ "/lib/common/debug.c",
         vendor_dir ++ "/lib/common/entropy_common.c",
@@ -65,7 +69,9 @@ pub fn buildZSTD(b: *std.build.Builder) *std.build.LibExeObjStep {
     return zstd;
 }
 
-pub const Options = struct {};
+pub const Options = struct {
+    multi_threading: bool = false,
+};
 
 fn thisDir() []const u8 {
     return std.fs.path.dirname(@src().file) orelse ".";
