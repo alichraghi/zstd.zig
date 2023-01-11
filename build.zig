@@ -22,9 +22,8 @@ pub fn build(b: *std.build.Builder) void {
 }
 
 pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep, options: Options) void {
-    _ = options;
     step.linkLibrary(buildZSTD(b, options));
-    step.addIncludeDir(vendor_dir ++ "/lib");
+    step.addIncludePath(vendor_dir ++ "/lib");
 }
 
 pub fn buildZSTD(b: *std.build.Builder, options: Options) *std.build.LibExeObjStep {
