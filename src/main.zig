@@ -48,9 +48,9 @@ pub const src_size_hint_max = c.ZSTD_SRCSIZEHINT_MAX;
 
 pub fn version() std.SemanticVersion {
     return .{
-        .major = 1,
-        .minor = 5,
-        .patch = 2,
+        .major = c.ZSTD_VERSION_MAJOR,
+        .minor = c.ZSTD_VERSION_MINOR,
+        .patch = c.ZSTD_VERSION_RELEASE,
     };
 }
 
@@ -58,40 +58,31 @@ test "refernece decls" {
     testing.refAllDeclsRecursive(comp);
 }
 
-test "version" {
-    try testing.expectEqual(std.SemanticVersion{
-        .major = c.ZSTD_VERSION_MAJOR,
-        .minor = c.ZSTD_VERSION_MINOR,
-        .patch = c.ZSTD_VERSION_RELEASE,
-    }, version());
-}
-
-const hello = "hello";
+const test_str = @embedFile("types.zig");
 
 test "compress/decompress" {
-    var comp_out: [20]u8 = undefined;
-    var decomp_out: [20]u8 = undefined;
+    var comp_out: [1024]u8 = undefined;
+    var decomp_out: [1024]u8 = undefined;
 
-    const compressed = try comp.compress(&comp_out, hello, comp.minCompressionLevel());
+    const compressed = try comp.compress(&comp_out, test_str, comp.minCompressionLevel());
     const decompressed = try decomp.decompress(&decomp_out, compressed);
-    try testing.expectEqualStrings(hello, decompressed);
+    try testing.expectEqualStrings(test_str, decompressed);
 }
 
 test "compress with context" {
-    var out: [20]u8 = undefined;
+    var out: [1024]u8 = undefined;
 
     const compressor = try comp.Compressor.init(.{});
     defer compressor.deinit();
 
-    _ = try compressor.compress(&out, hello, comp.minCompressionLevel());
+    _ = try compressor.compress(&out, test_str, comp.minCompressionLevel());
 }
 
 test "streaming compress" {
-    const in_data = [_]u8{ 'h', 'e', 'l', 'l', 'o' } ** 200_000;
-    var in_fbs = std.io.fixedBufferStream(&in_data);
+    var in_fbs = std.io.fixedBufferStream(test_str);
 
-    var out_data: [in_data.len]u8 = undefined;
-    var out_fbs = std.io.fixedBufferStream(&out_data);
+    var out: [test_str.len]u8 = undefined;
+    var out_fbs = std.io.fixedBufferStream(&out);
 
     var in_buf = try testing.allocator.alloc(u8, comp.Compressor.recommInSize());
     var out_buf = try testing.allocator.alloc(u8, comp.Compressor.recommOutSize());
@@ -130,7 +121,7 @@ test "streaming compress" {
             break;
     }
 
-    var decomp_out: [in_data.len]u8 = undefined;
+    var decomp_out: [test_str.len]u8 = undefined;
     const decompressed = try decomp.decompress(&decomp_out, out_fbs.getWritten());
-    try std.testing.expectEqualStrings(&in_data, decompressed);
+    try std.testing.expectEqualStrings(test_str, decompressed);
 }
